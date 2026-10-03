@@ -5,8 +5,13 @@ import SwiftUI
 /// Agent gateway over Tailscale, a local network, or a public VPS.
 struct WelcomeView: View {
     @Environment(AppModel.self) private var model
+    @Environment(BrandTheme.self) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showRemoteSetup = false
+    @State private var showCloudSetup = false
     @State private var localUnavailableMessage: String?
+
+    private var tokens: BrandPalette.Tokens { theme.appearance.tokens(for: colorScheme) }
 
     var body: some View {
         NavigationStack {
@@ -14,9 +19,10 @@ struct WelcomeView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Omnie Agent")
-                            .font(.largeTitle.bold())
-                        Text("Run an agent entirely on this iPhone, or connect to a Hermes Agent gateway on your VPS, home server, or Mac.")
-                            .foregroundStyle(.secondary)
+                            .font(.brandDisplay(34))
+                            .foregroundStyle(tokens.text)
+                        Text("Run an agent entirely on this iPhone, connect to a Hermes-style agent server, or bring your own cloud provider key.")
+                            .foregroundStyle(tokens.secondary)
                     }
                     .padding(.top, 40)
 
@@ -45,7 +51,18 @@ struct WelcomeView: View {
                             optionRow(
                                 icon: "server.rack",
                                 title: "Connect to a Server",
-                                subtitle: "Hermes Agent over Tailscale, your local network, or a public VPS."
+                                subtitle: "Hermes Agent or OpenCode, over Tailscale, your local network, or a public VPS."
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            showCloudSetup = true
+                        } label: {
+                            optionRow(
+                                icon: "key.fill",
+                                title: "Use a Cloud Provider",
+                                subtitle: "Bring your own key — DeepSeek, OpenAI, OpenRouter, and most others."
                             )
                         }
                         .buttonStyle(.plain)
@@ -53,8 +70,12 @@ struct WelcomeView: View {
                 }
                 .padding(24)
             }
+            .background(tokens.background)
             .navigationDestination(isPresented: $showRemoteSetup) {
                 OnboardingView()
+            }
+            .navigationDestination(isPresented: $showCloudSetup) {
+                CloudProviderSetupView()
             }
         }
     }
@@ -76,10 +97,10 @@ struct WelcomeView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(tokens.text)
                 Text(subtitle)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(tokens.secondary)
             }
             Spacer()
             Image(systemName: "chevron.right")
@@ -94,4 +115,5 @@ struct WelcomeView: View {
 #Preview {
     WelcomeView()
         .environment(AppModel())
+        .environment(BrandTheme())
 }

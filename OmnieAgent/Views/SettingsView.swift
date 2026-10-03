@@ -1,16 +1,28 @@
 import SwiftUI
 
-/// Settings for whichever mode is active: edit/test the remote server, or
-/// manage the on-device agent. Either way, lets you switch modes entirely.
+/// Settings for whichever mode is active: edit/test the remote server, the
+/// cloud provider, or manage the on-device agent. Either way, lets you
+/// switch modes entirely.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(BrandTheme.self) private var theme
     @Environment(\.dismiss) private var dismiss
 
+    // Remote (Hermes / OpenCode)
+    @State private var kind: RemoteBackendKind = .hermes
     @State private var urlText: String = ""
+    @State private var username: String = ""
     @State private var apiKey: String = ""
     @State private var displayName: String = ""
     @State private var isTesting = false
     @State private var testMessage: String?
+
+    // Cloud (BYOK)
+    @State private var cloudModel: String = ""
+    @State private var cloudAPIKey: String = ""
+    @State private var isTestingCloud = false
+    @State private var cloudTestMessage: String?
+
     @State private var showSignOutConfirmation = false
     @State private var showModeChangeConfirmation = false
 
@@ -19,13 +31,36 @@ struct SettingsView: View {
     @State private var isReconnectingMCP = false
     @State private var mcpStatusMessage: String?
 
+    private var canSaveRemote: Bool { !urlText.isEmpty && !apiKey.isEmpty }
+    private var canSaveCloud: Bool { !cloudModel.isEmpty && !cloudAPIKey.isEmpty }
+
     var body: some View {
         NavigationStack {
             Form {
-                if model.mode == .remote {
+                switch model.mode {
+                case .remote:
                     remoteSections
-                } else if model.mode == .local {
+                case .local:
                     localSection
+                case .cloud:
+                    cloudSections
+                case nil:
+                    EmptyView()
+                }
+
+                Section {
+                    Picker("Theme", selection: Binding(
+                        get: { theme.appearance },
+                        set: { theme.appearance = $0 }
+                    )) {
+                        ForEach(BrandAppearance.allCases) { appearance in
+                            Text(appearance.label).tag(appearance)
+                        }
+                    }
+                } header: {
+                    Text("Appearance")
+                } footer: {
+                    Text("Monochrome is true black and white — maximum contrast, minimum chroma.")
                 }
 
                 Section {
@@ -37,8 +72,8 @@ struct SettingsView: View {
                 Section("About") {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Omnie Agent")
-                            .font(.headline)
-                        Text("An independent client for self-hosted Hermes Agent gateways, with an on-device fallback agent. Not affiliated with or endorsed by Nous Research.")
+                            .font(.brandDisplay(17))
+                        Text("An independent client for self-hosted Hermes-style agent servers, direct cloud providers, and an on-device fallback agent. Not affiliated with or endorsed by Nous Research.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -47,23 +82,36 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if model.mode == .remote {
+                switch model.mode {
+                case .remote:
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Cancel") { dismiss() }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Save") { save() }
-                            .disabled(urlText.isEmpty || apiKey.isEmpty)
+                        Button("Save") { saveRemote() }
+                            .disabled(!canSaveRemote)
                     }
-                } else {
+                case .cloud:
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") { dismiss() }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Save") { saveCloud() }
+                            .disabled(!canSaveCloud)
+                    }
+                default:
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { dismiss() }
                     }
                 }
             }
-            .confirmationDialog("Sign out of this server?", isPresented: $showSignOutConfirmation, titleVisibility: .visible) {
+            .confirmationDialog("Sign out?", isPresented: $showSignOutConfirmation, titleVisibility: .visible) {
                 Button("Sign Out", role: .destructive) {
-                    model.signOut()
+                    if model.mode == .cloud {
+                        model.signOutCloud()
+                    } else {
+                        model.signOut()
+                    }
                     dismiss()
                 }
             }
@@ -82,11 +130,23 @@ struct SettingsView: View {
     @ViewBuilder
     private var remoteSections: some View {
         Section("Server") {
+            Picker("Backend", selection: $kind) {
+                Text("Hermes Agent").tag(RemoteBackendKind.hermes)
+                Text("OpenCode").tag(RemoteBackendKind.opencode)
+            }
+            .pickerStyle(.segmented)
             TextField("URL", text: $urlText)
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            SecureField("API Key", text: $apiKey)
+            if kind == .opencode {
+                TextField("Username", text: $username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                SecureField("Password", text: $apiKey)
+            } else {
+                SecureField("API Key", text: $apiKey)
+            }
             TextField("Name", text: $displayName)
         }
 
@@ -110,6 +170,51 @@ struct SettingsView: View {
         }
 
         Section {
+            Button("Sign Out", role: .destructive) {
+                showSignOutConfirmation = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var cloudSections: some View {
+        Section {
+            if let config = model.cloudConfig {
+                LabeledContent("Provider", value: config.providerName)
+                LabeledContent("Base URL", value: config.baseURL.absoluteString)
+            }
+            TextField("Model", text: $cloudModel)
+            SecureField("API Key", text: $cloudAPIKey)
+        } header: {
+            Text("Provider")
+        } footer: {
+            Text("To switch providers entirely, sign out and reconnect from the welcome screen.")
+        }
+
+        Section {
+            Button {
+                Task { await testCloudConnection() }
+            } label: {
+                HStack {
+                    Text("Test Connection")
+                    if isTestingCloud {
+                        Spacer()
+                        ProgressView().controlSize(.small)
+                    }
+                }
+            }
+            if let cloudTestMessage {
+                Text(cloudTestMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        Section {
+            Button("Clear Conversation", role: .destructive) {
+                model.clearCloudConversation()
+            }
+            .disabled(model.cloudMessages.isEmpty)
             Button("Sign Out", role: .destructive) {
                 showSignOutConfirmation = true
             }
@@ -171,9 +276,15 @@ struct SettingsView: View {
 
     private func load() {
         if let config = model.config {
+            kind = config.kind
             urlText = config.baseURL.absoluteString
+            username = config.username
             apiKey = config.apiKey
             displayName = config.displayName
+        }
+        if let cloudConfig = model.cloudConfig {
+            cloudModel = cloudConfig.model
+            cloudAPIKey = cloudConfig.apiKey
         }
         if let mcpConfig = MCPServerConfigStore.shared.current {
             mcpURLText = mcpConfig.endpoint.absoluteString
@@ -188,7 +299,7 @@ struct SettingsView: View {
         }
         isTesting = true
         defer { isTesting = false }
-        let config = ServerConfig(baseURL: url, apiKey: apiKey, displayName: displayName)
+        let config = ServerConfig(kind: kind, baseURL: url, username: username, apiKey: apiKey, displayName: displayName)
         switch await model.testConnection(config) {
         case .success(let name):
             testMessage = name.map { "Connected · \($0)" } ?? "Connected"
@@ -197,10 +308,31 @@ struct SettingsView: View {
         }
     }
 
-    private func save() {
+    private func saveRemote() {
         guard let url = URL(string: urlText) else { return }
-        let name = displayName.isEmpty ? (url.host ?? "Hermes Agent") : displayName
-        model.apply(ServerConfig(baseURL: url, apiKey: apiKey, displayName: name))
+        let fallbackName = kind == .hermes ? "Hermes Agent" : "OpenCode"
+        let name = displayName.isEmpty ? (url.host ?? fallbackName) : displayName
+        model.apply(ServerConfig(kind: kind, baseURL: url, username: username, apiKey: apiKey, displayName: name))
+        dismiss()
+    }
+
+    private func testCloudConnection() async {
+        guard let existing = model.cloudConfig else { return }
+        isTestingCloud = true
+        defer { isTestingCloud = false }
+        let config = CloudProviderConfig(providerID: existing.providerID, providerName: existing.providerName, baseURL: existing.baseURL, model: cloudModel, apiKey: cloudAPIKey)
+        switch await model.testCloudConnection(config) {
+        case .success:
+            cloudTestMessage = "Connected"
+        case .failure(let error):
+            cloudTestMessage = error.localizedDescription
+        }
+    }
+
+    private func saveCloud() {
+        guard let existing = model.cloudConfig else { return }
+        let config = CloudProviderConfig(providerID: existing.providerID, providerName: existing.providerName, baseURL: existing.baseURL, model: cloudModel, apiKey: cloudAPIKey)
+        model.applyCloud(config)
         dismiss()
     }
 
@@ -236,4 +368,5 @@ struct SettingsView: View {
 #Preview {
     SettingsView()
         .environment(AppModel())
+        .environment(BrandTheme())
 }

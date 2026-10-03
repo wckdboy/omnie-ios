@@ -1,11 +1,14 @@
 # Omnie Agent
 
-Omnie Agent is an iOS client for running an agent two ways: entirely on the
-phone using Apple's on-device model, or connected to a self-hosted
-[Hermes Agent](https://github.com/NousResearch/hermes-agent) gateway over
-Tailscale, a local network, or a public VPS address. There is no bundled
-account system and no Omnie-run backend — every conversation either stays on
-the device or goes straight to a server the user points the app at.
+Omnie Agent is an iOS client for running an agent three ways: entirely on the
+phone using Apple's on-device model, connected to a self-hosted Hermes-style
+agent server ([Hermes Agent](https://github.com/NousResearch/hermes-agent) or
+[OpenCode](https://opencode.ai)) over Tailscale, a local network, or a public
+VPS address, or directly against a cloud provider using your own API key
+(DeepSeek, OpenAI, and most other OpenAI-compatible providers). There is no
+bundled account system and no Omnie-run backend — every conversation either
+stays on the device or goes straight to a server or provider the user points
+the app at.
 
 Omnie Agent is an independent client. It is not affiliated with or endorsed
 by Nous Research.
@@ -18,11 +21,19 @@ by Nous Research.
   offline; the conversation is saved locally and never leaves the phone.
 - **Remote mode** — talks to a Hermes Agent gateway's API server
   (`/health`, `/v1/models`, `/api/sessions*`, and the session chat SSE
-  stream), reachable over Tailscale, local Wi-Fi, or a public address. The
-  server's API key is stored in the Keychain, never in `UserDefaults` or on
-  disk in plain text.
+  stream) or an OpenCode server (`opencode serve`, HTTP Basic auth, its
+  REST session + message endpoints), reachable over Tailscale, local Wi-Fi,
+  or a public address. One `RemoteAgentClient` protocol covers both, so the
+  rest of the app doesn't care which is active. The server's key is stored
+  in the Keychain, never in `UserDefaults` or on disk in plain text.
+- **Cloud mode (BYOK)** — a built-in catalog of OpenAI-compatible providers
+  (DeepSeek, OpenAI, OpenRouter, Groq, Mistral, Together AI, Fireworks AI,
+  xAI, Perplexity, Featherless AI) plus a "Custom" entry for anything else
+  that speaks the same `/chat/completions` shape. One provider, one model,
+  one key — sent straight to the provider, never through an Omnie-run
+  server. The key is stored in the Keychain.
 - A mode picker on first launch, switchable later from Settings without
-  losing either the remote config or the on-device conversation.
+  losing any of the three modes' saved state.
 - Markdown rendering, tool-use indicators, and a minimal Liquid Glass UI.
 - **Shortcuts / Siri** — "Ask Omnie" sends a prompt to whichever mode is
   active and returns the reply, without opening the app.
@@ -48,10 +59,13 @@ No remote repository or hosted CI service is required.
 
 ## Architecture
 
-- `OmnieAgent/Models/` — `ServerConfig` (+ Keychain-backed store), `AppMode`,
-  and the `ChatSession` / `ChatMessage` / `ToolEvent` wire models.
-- `OmnieAgent/Networking/` — `HermesClient` (the gateway's REST + SSE API)
-  and `SSEParser`, a lenient Server-Sent Events parser.
+- `OmnieAgent/Models/` — `ServerConfig`, `CloudProviderConfig`, `AIProvider`
+  (the BYOK catalog), `AppMode` — all with Keychain-backed stores — and the
+  `ChatSession` / `ChatMessage` / `ToolEvent` wire models.
+- `OmnieAgent/Networking/` — `RemoteAgentClient` (the shared protocol),
+  `HermesClient`, `OpenCodeClient`, `OpenAICompatibleClient` (the BYOK
+  client), and `SSEParser`, a lenient Server-Sent Events parser shared by
+  all three.
 - `OmnieAgent/Local/` — `LocalAgentClient` and `CurrentDateTimeTool`, the
   on-device agent.
 - `OmnieAgent/MCP/` — `MCPClient` (JSON-RPC over the Streamable HTTP
@@ -60,11 +74,15 @@ No remote repository or hosted CI service is required.
 - `OmnieAgent/AppIntents/` — `AskOmnieIntent` and the bridge it uses to reach
   whichever agent is configured without the SwiftUI environment.
 - `OmnieAgent/DeepLinking/` — `DeepLink`, the `omnie://` URL parser.
+- `OmnieAgent/DesignSystem/` — `BrandPalette`, `BrandFont`, `BrandTheme`,
+  `brandPrimaryAction`: the tokens and helpers from `BRANDING.md` (warm vs.
+  monochrome neutrals, the Unbounded display font, the purple-to-orange
+  accent gradient reserved for one primary action per screen).
 - `OmnieAgent/AppModel.swift` — the single `@Observable` source of truth for
-  both modes.
+  all three modes.
 - `OmnieAgent/Views/` — SwiftUI views; `WelcomeView` is the mode picker,
   `SessionsView`/`ChatView` the remote flow, `LocalChatView` the on-device
-  flow.
+  flow, `CloudProviderSetupView`/`CloudChatView` the BYOK flow.
 
 ## Integrating with other tools and agents
 
@@ -73,7 +91,10 @@ family where they apply, and stays focused on Hermes-style agents for the
 remote side rather than special-casing any one backend:
 
 - Remote mode talks to anything exposing Hermes Agent's API server contract
-  (`/health`, `/v1/models`, `/api/sessions*`).
+  (`/health`, `/v1/models`, `/api/sessions*`), or an OpenCode server's REST
+  API — one `RemoteAgentClient` protocol, two backends.
+- Cloud mode talks directly to whichever OpenAI-compatible provider you
+  bring a key for — one `OpenAICompatibleClient`, a growing provider catalog.
 - **Shortcuts, Siri, and the `omnie://` URL scheme** let other apps and
   automations drive either mode without opening the app.
 - **MCP client support** lets the on-device agent pull in tools from any
@@ -100,6 +121,7 @@ include analytics or advertising SDKs.
 
 ## License
 
-Omnie Agent is available under the MIT License. See `LICENSE`.
+Omnie Agent is available under the MIT License. See `LICENSE`. Third-party
+assets (the Unbounded display font) are recorded in `THIRD_PARTY_NOTICES.md`.
 
 Part of [WCKD.ai](https://github.com/wckdboy/wckd.ai).

@@ -20,7 +20,7 @@ nonisolated enum HermesError: LocalizedError {
 /// Talks to a single Hermes Agent gateway's API server: the OpenAI-compatible
 /// `/v1` routes for a quick health/name check, and the `/api/sessions` REST +
 /// SSE routes that drive the chat UI.
-actor HermesClient {
+actor HermesClient: RemoteAgentClient {
     private let config: ServerConfig
     private let session: URLSession
 

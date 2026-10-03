@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// Renders one message: a tinted bubble for the user, plain Markdown text for
-/// the assistant (with tool-use capsules above it), or a centered caption for
-/// system messages.
+/// Renders one message: a neutral glass bubble for the user, plain Markdown
+/// text for the assistant (with tool-use capsules above it), or a centered
+/// caption for system messages.
+///
+/// The user bubble is deliberately *not* accent-tinted — `BRANDING.md`
+/// reserves the one accent gradient for a single primary action or
+/// active/selected item per screen, not for content like every message a
+/// user sends.
 struct MessageRow: View {
     let message: ChatMessage
 
@@ -14,7 +19,7 @@ struct MessageRow: View {
                 Text(message.text)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .glassEffect(.regular.tint(.accentColor), in: .rect(cornerRadius: 18))
+                    .glassEffect(.regular, in: .rect(cornerRadius: 18))
             }
         case .assistant:
             VStack(alignment: .leading, spacing: 8) {

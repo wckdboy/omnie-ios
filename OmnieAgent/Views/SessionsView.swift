@@ -49,6 +49,7 @@ struct SessionsView: View {
                         Task { await startNewChat() }
                     } label: {
                         Image(systemName: "square.and.pencil")
+                            .foregroundStyle(isCreating ? AnyShapeStyle(.secondary) : AnyShapeStyle(BrandPalette.accentGradient))
                     }
                     .disabled(isCreating)
                 }

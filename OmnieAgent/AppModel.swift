@@ -9,7 +9,7 @@ import Observation
 @Observable
 final class AppModel {
     private(set) var config: ServerConfig?
-    private(set) var client: HermesClient?
+    private(set) var client: (any RemoteAgentClient)?
     private(set) var mode: AppMode?
 
     var sessions: [ChatSession] = []
@@ -26,24 +26,38 @@ final class AppModel {
     private(set) var localAvailability: LocalAgentClient.Availability = .unavailable(reason: "Checking…")
     private var localClient: LocalAgentClient?
 
+    // Cloud provider (BYOK)
+    private(set) var cloudConfig: CloudProviderConfig?
+    var cloudMessages: [ChatMessage] = []
+    var isCloudStreaming = false
+    private var cloudClient: OpenAICompatibleClient?
+
     // Pending navigation target for a deep link that opened a new remote
     // chat; SessionsView observes this to push into the conversation.
     var pendingRemoteSession: ChatSession?
 
     private var streamTask: Task<Void, Never>?
     private var localStreamTask: Task<Void, Never>?
+    private var cloudStreamTask: Task<Void, Never>?
     private let localTranscriptKey = "omnie.local.transcript"
+    private let cloudTranscriptKey = "omnie.cloud.transcript"
 
     init() {
         config = ServerConfigStore.shared.current
         if let config {
-            client = HermesClient(config: config)
+            client = config.makeClient()
+        }
+        cloudConfig = CloudProviderConfigStore.shared.current
+        if let cloudConfig {
+            cloudClient = OpenAICompatibleClient(config: cloudConfig)
         }
         localAvailability = LocalAgentClient.availability
         mode = AppModeStore.shared.current
         if mode == .local {
             loadLocalTranscript()
             Task { localClient = await LocalAgentClient.makeConfigured() }
+        } else if mode == .cloud {
+            loadCloudTranscript()
         }
     }
 
@@ -87,7 +101,7 @@ final class AppModel {
     // MARK: - Configuration (remote)
 
     func testConnection(_ config: ServerConfig) async -> Result<String?, Error> {
-        let testClient = HermesClient(config: config)
+        let testClient = config.makeClient()
         do {
             guard try await testClient.health() else {
                 return .failure(HermesError.server(status: -1, message: "The server didn't report a healthy status."))
@@ -102,7 +116,7 @@ final class AppModel {
     func apply(_ config: ServerConfig) {
         ServerConfigStore.shared.save(config)
         self.config = config
-        client = HermesClient(config: config)
+        client = config.makeClient()
         sessions = []
         messages = []
         activeSessionId = nil
@@ -117,6 +131,36 @@ final class AppModel {
         sessions = []
         messages = []
         activeSessionId = nil
+        mode = nil
+        AppModeStore.shared.save(nil)
+    }
+
+    // MARK: - Configuration (cloud / BYOK)
+
+    func testCloudConnection(_ config: CloudProviderConfig) async -> Result<Void, Error> {
+        let testClient = OpenAICompatibleClient(config: config)
+        do {
+            try await testClient.testConnection()
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    func applyCloud(_ config: CloudProviderConfig) {
+        CloudProviderConfigStore.shared.save(config)
+        cloudConfig = config
+        cloudClient = OpenAICompatibleClient(config: config)
+        cloudMessages = []
+        mode = .cloud
+        AppModeStore.shared.save(.cloud)
+    }
+
+    func signOutCloud() {
+        CloudProviderConfigStore.shared.clear()
+        cloudConfig = nil
+        cloudClient = nil
+        cloudMessages = []
         mode = nil
         AppModeStore.shared.save(nil)
     }
@@ -291,6 +335,79 @@ final class AppModel {
         UserDefaults.standard.set(data, forKey: localTranscriptKey)
     }
 
+    // MARK: - Chat (cloud / BYOK)
+
+    func sendCloud(_ text: String) {
+        guard let cloudClient, !text.isEmpty else { return }
+
+        cloudMessages.append(ChatMessage(role: .user, text: text))
+        let assistantMessage = ChatMessage(role: .assistant, text: "", isStreaming: true)
+        cloudMessages.append(assistantMessage)
+        isCloudStreaming = true
+
+        // Stateless API: send the whole history so far, including the new
+        // user message that was just appended above.
+        let history = cloudMessages.filter { $0.id != assistantMessage.id }
+
+        cloudStreamTask = Task {
+            do {
+                for try await event in cloudClient.streamChat(messages: history) {
+                    self.applyCloud(event, to: assistantMessage.id)
+                }
+            } catch {
+                if !Task.isCancelled {
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+            if let index = self.cloudMessages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                self.cloudMessages[index].isStreaming = false
+            }
+            self.isCloudStreaming = false
+            self.saveCloudTranscript()
+        }
+    }
+
+    func stopCloudStreaming() {
+        cloudStreamTask?.cancel()
+        cloudStreamTask = nil
+        isCloudStreaming = false
+        if let last = cloudMessages.indices.last {
+            cloudMessages[last].isStreaming = false
+        }
+        saveCloudTranscript()
+    }
+
+    func clearCloudConversation() {
+        cloudStreamTask?.cancel()
+        cloudStreamTask = nil
+        cloudMessages = []
+        isCloudStreaming = false
+        UserDefaults.standard.removeObject(forKey: cloudTranscriptKey)
+    }
+
+    private func applyCloud(_ event: StreamEvent, to messageId: UUID) {
+        guard let index = cloudMessages.firstIndex(where: { $0.id == messageId }) else { return }
+        switch event {
+        case .delta(let chunk), .commentary(let chunk):
+            cloudMessages[index].text += chunk
+        case .failed(let message):
+            errorMessage = message
+        case .toolStarted, .toolCompleted, .completed, .cancelled, .unknown:
+            break
+        }
+    }
+
+    private func loadCloudTranscript() {
+        guard let data = UserDefaults.standard.data(forKey: cloudTranscriptKey),
+              let saved = try? JSONDecoder().decode([ChatMessage].self, from: data) else { return }
+        cloudMessages = saved
+    }
+
+    private func saveCloudTranscript() {
+        guard let data = try? JSONEncoder().encode(cloudMessages) else { return }
+        UserDefaults.standard.set(data, forKey: cloudTranscriptKey)
+    }
+
     // MARK: - Deep links
 
     /// Handles a `omnie://` URL opened by the system, a Shortcut, or another
@@ -319,6 +436,13 @@ final class AppModel {
                     await openSession(session)
                     send(text)
                 }
+            case .cloud:
+                guard cloudClient != nil else { return }
+                if mode != .cloud {
+                    mode = .cloud
+                    AppModeStore.shared.save(.cloud)
+                }
+                sendCloud(text)
             case nil:
                 break
             }

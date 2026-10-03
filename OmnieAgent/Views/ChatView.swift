@@ -54,7 +54,8 @@ struct ChatView: View {
                     .font(.body.bold())
                     .frame(width: 36, height: 36)
             }
-            .buttonStyle(.glassProminent)
+            .buttonStyle(.plain)
+            .brandPrimaryAction(in: .circle)
             .disabled(!model.isStreaming && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(.horizontal, 12)

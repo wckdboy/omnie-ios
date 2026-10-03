@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The on-device conversation: a single ongoing chat backed by Apple's
-/// Foundation Models framework, persisted locally. No server, no network.
-struct LocalChatView: View {
+/// The cloud-provider conversation: a single ongoing chat against whatever
+/// OpenAI-compatible provider the user configured with their own key.
+struct CloudChatView: View {
     @Environment(AppModel.self) private var model
     @Environment(BrandTheme.self) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -19,20 +19,20 @@ struct LocalChatView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 16) {
-                            if model.localMessages.isEmpty {
+                            if model.cloudMessages.isEmpty {
                                 emptyState
                             }
-                            ForEach(model.localMessages) { message in
+                            ForEach(model.cloudMessages) { message in
                                 MessageRow(message: message)
                                     .id(message.id)
                             }
                         }
                         .padding(16)
                     }
-                    .onChange(of: model.localMessages.last?.text) {
+                    .onChange(of: model.cloudMessages.last?.text) {
                         scrollToBottom(proxy)
                     }
-                    .onChange(of: model.localMessages.count) {
+                    .onChange(of: model.cloudMessages.count) {
                         scrollToBottom(proxy)
                     }
                 }
@@ -40,7 +40,7 @@ struct LocalChatView: View {
                 composer
             }
             .background(tokens.background)
-            .navigationTitle("On This iPhone")
+            .navigationTitle(model.cloudConfig?.providerName ?? "Cloud Provider")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -56,7 +56,7 @@ struct LocalChatView: View {
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .disabled(model.localMessages.isEmpty)
+                    .disabled(model.cloudMessages.isEmpty)
                 }
             }
             .sheet(isPresented: $showSettings) {
@@ -64,7 +64,7 @@ struct LocalChatView: View {
             }
             .confirmationDialog("Clear this conversation?", isPresented: $showClearConfirmation, titleVisibility: .visible) {
                 Button("Clear", role: .destructive) {
-                    model.clearLocalConversation()
+                    model.clearCloudConversation()
                 }
             }
         }
@@ -75,9 +75,11 @@ struct LocalChatView: View {
             Text("Ask me anything")
                 .font(.brandDisplay(22))
                 .foregroundStyle(tokens.text)
-            Text("This conversation runs entirely on your iPhone using Apple's on-device model. No network connection is used.")
-                .font(.footnote)
-                .foregroundStyle(tokens.secondary)
+            if let config = model.cloudConfig {
+                Text("Talking directly to \(config.providerName) (\(config.model)) using your own API key.")
+                    .font(.footnote)
+                    .foregroundStyle(tokens.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 40)
@@ -95,31 +97,31 @@ struct LocalChatView: View {
             Button {
                 send()
             } label: {
-                Image(systemName: model.isLocalStreaming ? "stop.fill" : "arrow.up")
+                Image(systemName: model.isCloudStreaming ? "stop.fill" : "arrow.up")
                     .font(.body.bold())
                     .frame(width: 36, height: 36)
             }
             .buttonStyle(.plain)
             .brandPrimaryAction(in: .circle)
-            .disabled(!model.isLocalStreaming && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!model.isCloudStreaming && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
     }
 
     private func send() {
-        if model.isLocalStreaming {
-            model.stopLocalStreaming()
+        if model.isCloudStreaming {
+            model.stopCloudStreaming()
             return
         }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         draft = ""
-        model.sendLocal(text)
+        model.sendCloud(text)
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        guard let last = model.localMessages.last else { return }
+        guard let last = model.cloudMessages.last else { return }
         withAnimation(.easeOut(duration: 0.2)) {
             proxy.scrollTo(last.id, anchor: .bottom)
         }
@@ -127,7 +129,7 @@ struct LocalChatView: View {
 }
 
 #Preview {
-    LocalChatView()
+    CloudChatView()
         .environment(AppModel())
         .environment(BrandTheme())
 }

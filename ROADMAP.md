@@ -7,23 +7,46 @@
 | M3 | Mode switching without losing either side's state | ✅ |
 | M4 | App icon (light/dark/tinted), local network + Tailscale/VPS connectivity | ✅ |
 | M5 | Shortcuts/Siri (`AskOmnieIntent`), `omnie://` URL scheme, MCP client for on-device tools | ✅ |
-| M6 | Further cross-program integration (see below) | open |
+| M6 | `BRANDING.md` adopted: design tokens, Unbounded display font, accent gradient on primary actions, selectable monochrome theme | ✅ |
+| M7 | OpenCode as a second remote backend; Cloud mode (BYOK) with a provider catalog | ✅ |
+| M8 | Further cross-program integration (see below) | open |
 
-## M6 — further cross-program integration
+## M7 notes — OpenCode and BYOK
+
+- **OpenCode** (`opencode serve`) is documented well enough for its REST
+  session/message endpoints (`GET/POST /session`, `GET/POST /session/:id/message`)
+  but its token-by-token streaming goes through a *global* SSE endpoint
+  (`/event`) with payload shapes that aren't fully published. Rather than
+  guess at filtering/parsing that correctly, `OpenCodeClient` uses the
+  documented synchronous message endpoint — replies arrive all at once
+  instead of token-by-token. Revisit if the `/event` shapes get confirmed
+  against a live server.
+- **Cloud provider model IDs are never hardcoded as real defaults** except
+  where explicitly verified (DeepSeek's current model is `deepseek-flash` —
+  confirmed live; note `deepseek-chat`/`deepseek-reasoner` are retired as of
+  July 2026, and there's no literal `"deepseek-v4.1-flash"` string). Every
+  other preset shows its model as placeholder text only, since model
+  catalogs change constantly and a stale hardcoded default is worse than an
+  empty field.
+- Anthropic is deliberately not in the built-in provider catalog — its
+  native API has a different shape (`x-api-key`, `/v1/messages`) than the
+  `/chat/completions` contract `OpenAICompatibleClient` speaks. Use "Custom"
+  if an OpenAI-compatible shim is available.
+
+## M8 — further cross-program integration
 
 Scope right now is `omnie-edit` and `omnie-agent`; more Omnie programs are
 expected to join over time. Candidate next steps, in no particular order —
 check in before starting one, since this is shared surface across programs:
 
-- **OMNIE-BOX hub as a second remote backend.** The [omnie](https://github.com/wckdboy/omnie)
-  hub exposes its own `/api/chat` (SSE) and `/api/about`. Remote mode
-  currently assumes a Hermes Agent gateway specifically — the project's
-  explicit focus is Hermes-style agents, so this is deliberately not
-  generalized yet; revisit only if a concrete need shows up.
-- **MCP for remote mode.** Not done: a Hermes gateway manages its own tools
-  server-side, so the client has no tool list to extend there today. If that
-  changes (e.g. Hermes exposes a client-contributed tool list), MCP wiring
-  should follow the same `MCPDynamicTool` pattern used on-device.
+- **OMNIE-BOX hub as a third remote backend.** The [omnie](https://github.com/wckdboy/omnie)
+  hub exposes its own `/api/chat` (SSE) and `/api/about`. `RemoteAgentClient`
+  already supports multiple backends (Hermes, OpenCode) — adding this one
+  would follow the same pattern.
+- **MCP for remote mode.** Not done: a Hermes/OpenCode server manages its
+  own tools server-side, so the client has no tool list to extend there
+  today. If that changes, MCP wiring should follow the same
+  `MCPDynamicTool` pattern used on-device.
 - **Richer Shortcuts**: `AskOmnieIntent` only exposes a `prompt: String`
   parameter today (Siri phrase parameters are restricted to `AppEntity`/
   `AppEnum`, so a spoken "Ask Omnie such-and-such" phrase isn't available —

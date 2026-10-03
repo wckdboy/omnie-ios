@@ -15,6 +15,12 @@ struct RootView: View {
             } else {
                 OnboardingView()
             }
+        case .cloud:
+            if model.cloudConfig != nil {
+                CloudChatView()
+            } else {
+                CloudProviderSetupView()
+            }
         case nil:
             WelcomeView()
         }
@@ -24,4 +30,5 @@ struct RootView: View {
 #Preview {
     RootView()
         .environment(AppModel())
+        .environment(BrandTheme())
 }
