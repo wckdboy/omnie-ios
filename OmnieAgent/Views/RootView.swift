@@ -1,15 +1,22 @@
 import SwiftUI
 
-/// Chooses between onboarding (no server configured yet) and the main
-/// sessions list, based on `AppModel.isConfigured`.
+/// Chooses between the mode picker (no mode chosen yet), the on-device
+/// agent, or the remote sessions list, based on `AppModel.mode`.
 struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if model.isConfigured {
-            SessionsView()
-        } else {
-            OnboardingView()
+        switch model.mode {
+        case .local:
+            LocalChatView()
+        case .remote:
+            if model.isConfigured {
+                SessionsView()
+            } else {
+                OnboardingView()
+            }
+        case nil:
+            WelcomeView()
         }
     }
 }

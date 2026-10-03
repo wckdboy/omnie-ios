@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// First-run setup: point the app at a Hermes Agent gateway's API server.
+/// Point the app at a Hermes Agent gateway's API server, reached over
+/// Tailscale, a local network, or a public VPS address.
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
 
@@ -19,12 +20,12 @@ struct OnboardingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Omnie Agent")
+                    Text("Connect to a Server")
                         .font(.largeTitle.bold())
-                    Text("Connect to a Hermes Agent gateway running on your VPS, home server, or Mac.")
+                    Text("Works with a Hermes Agent gateway reached over Tailscale, your local Wi-Fi, or a public VPS address.")
                         .foregroundStyle(.secondary)
                 }
-                .padding(.top, 40)
+                .padding(.top, 8)
 
                 VStack(alignment: .leading, spacing: 16) {
                     labeledField("Server URL", text: $urlText, placeholder: "http://100.x.x.x:8642")
@@ -65,6 +66,8 @@ struct OnboardingView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Run `hermes gateway` with `API_SERVER_ENABLED=true` and an `API_SERVER_KEY` set on your server first.")
+                    Text("On a Tailscale network, use the device's 100.x.x.x address or MagicDNS name (e.g. `http://my-server:8642`).")
+                    Text("Connecting directly over Wi-Fi may prompt you to allow local network access — tap Allow.")
                     Text("Use HTTPS if your server is reachable from the public internet.")
                 }
                 .font(.footnote)
