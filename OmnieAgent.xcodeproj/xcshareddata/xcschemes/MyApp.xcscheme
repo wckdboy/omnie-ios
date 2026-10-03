@@ -17,7 +17,7 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "000000000000000100000000"
                BuildableName = "OmnieAgent.app"
-               ReferencedContainer = "container:Omnie-Agent.xcodeproj">
+               ReferencedContainer = "container:OmnieAgent.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,7 +46,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "000000000000000100000000"
             BuildableName = "OmnieAgent.app"
-            ReferencedContainer = "container:Omnie-Agent.xcodeproj">
+            ReferencedContainer = "container:OmnieAgent.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -62,7 +62,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "000000000000000100000000"
             BuildableName = "OmnieAgent.app"
-            ReferencedContainer = "container:Omnie-Agent.xcodeproj">
+            ReferencedContainer = "container:OmnieAgent.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
