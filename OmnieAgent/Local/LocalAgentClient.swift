@@ -30,16 +30,35 @@ final class LocalAgentClient {
 
     private let session: LanguageModelSession
 
-    init() {
+    /// `tools` always includes `CurrentDateTimeTool`; pass additional tools
+    /// (e.g. ones discovered from an MCP server) to extend what the model
+    /// can call. Use `makeConfigured()` to build one with the user's
+    /// configured MCP server already folded in.
+    init(tools: [any Tool] = [CurrentDateTimeTool()]) {
         session = LanguageModelSession(
-            tools: [CurrentDateTimeTool()],
+            tools: tools,
             instructions: """
             You are Omnie Agent, a concise, friendly assistant running entirely on-device on the \
             user's iPhone. You have no internet access and can't browse the web, run shell \
-            commands, or read the user's files. Use the currentDateTime tool whenever you need to \
-            know the current date or time. Keep answers short and clear.
+            commands, or read the user's files, beyond what your tools explicitly let you do. \
+            Use the currentDateTime tool whenever you need to know the current date or time. \
+            Keep answers short and clear.
             """
         )
+    }
+
+    /// Builds a client with the built-in tool plus any tools discovered from
+    /// the configured MCP server. A server that's unreachable just means
+    /// fewer tools, not a failed launch — this never throws.
+    static func makeConfigured() async -> LocalAgentClient {
+        var tools: [any Tool] = [CurrentDateTimeTool()]
+        if let mcpConfig = MCPServerConfigStore.shared.current {
+            let mcpClient = MCPClient(endpoint: mcpConfig.endpoint, bearerToken: mcpConfig.bearerToken)
+            if let discovered = try? await mcpClient.listTools() {
+                tools += discovered.map { MCPDynamicTool(definition: $0, client: mcpClient) }
+            }
+        }
+        return LocalAgentClient(tools: tools)
     }
 
     /// Streams cumulative snapshots of the model's reply for one turn (each

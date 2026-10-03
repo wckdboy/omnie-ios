@@ -60,8 +60,10 @@ struct WelcomeView: View {
     }
 
     private func chooseLocal() {
-        if !model.enterLocalMode() {
-            localUnavailableMessage = model.localAvailabilityMessage
+        Task {
+            if !(await model.enterLocalMode()) {
+                localUnavailableMessage = model.localAvailabilityMessage
+            }
         }
     }
 

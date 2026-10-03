@@ -26,6 +26,10 @@ final class AppModel {
     private(set) var localAvailability: LocalAgentClient.Availability = .unavailable(reason: "Checking…")
     private var localClient: LocalAgentClient?
 
+    // Pending navigation target for a deep link that opened a new remote
+    // chat; SessionsView observes this to push into the conversation.
+    var pendingRemoteSession: ChatSession?
+
     private var streamTask: Task<Void, Never>?
     private var localStreamTask: Task<Void, Never>?
     private let localTranscriptKey = "omnie.local.transcript"
@@ -38,7 +42,8 @@ final class AppModel {
         localAvailability = LocalAgentClient.availability
         mode = AppModeStore.shared.current
         if mode == .local {
-            prepareLocalAgent()
+            loadLocalTranscript()
+            Task { localClient = await LocalAgentClient.makeConfigured() }
         }
     }
 
@@ -54,10 +59,11 @@ final class AppModel {
     /// Attempts to switch into on-device mode. Returns `false` (without
     /// changing anything) if Apple Intelligence's on-device model isn't
     /// available right now.
-    func enterLocalMode() -> Bool {
+    func enterLocalMode() async -> Bool {
         localAvailability = LocalAgentClient.availability
         guard localAvailability == .available else { return false }
-        prepareLocalAgent()
+        loadLocalTranscript()
+        localClient = await LocalAgentClient.makeConfigured()
         mode = .local
         AppModeStore.shared.save(.local)
         return true
@@ -70,10 +76,12 @@ final class AppModel {
         AppModeStore.shared.save(nil)
     }
 
-    private func prepareLocalAgent() {
-        guard localClient == nil else { return }
-        localClient = LocalAgentClient()
-        loadLocalTranscript()
+    /// Rebuilds the on-device session against whatever MCP server is
+    /// configured right now. Starts a fresh conversation turn-wise (tools are
+    /// fixed at session construction) but keeps the visible transcript.
+    func reloadLocalTools() async {
+        guard mode == .local else { return }
+        localClient = await LocalAgentClient.makeConfigured()
     }
 
     // MARK: - Configuration (remote)
@@ -281,5 +289,39 @@ final class AppModel {
     private func saveLocalTranscript() {
         guard let data = try? JSONEncoder().encode(localMessages) else { return }
         UserDefaults.standard.set(data, forKey: localTranscriptKey)
+    }
+
+    // MARK: - Deep links
+
+    /// Handles a `omnie://` URL opened by the system, a Shortcut, or another
+    /// app. Unrecognized or incomplete links are silently ignored.
+    func handleDeepLink(_ url: URL) {
+        guard let link = DeepLink(url: url) else { return }
+        switch link {
+        case .ask(let text, let requestedMode):
+            switch requestedMode ?? mode {
+            case .local:
+                Task {
+                    if mode != .local {
+                        guard await enterLocalMode() else { return }
+                    }
+                    sendLocal(text)
+                }
+            case .remote:
+                guard client != nil else { return }
+                if mode != .remote {
+                    mode = .remote
+                    AppModeStore.shared.save(.remote)
+                }
+                Task {
+                    guard let session = await createSession() else { return }
+                    pendingRemoteSession = session
+                    await openSession(session)
+                    send(text)
+                }
+            case nil:
+                break
+            }
+        }
     }
 }

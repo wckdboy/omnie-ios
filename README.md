@@ -24,6 +24,13 @@ by Nous Research.
 - A mode picker on first launch, switchable later from Settings without
   losing either the remote config or the on-device conversation.
 - Markdown rendering, tool-use indicators, and a minimal Liquid Glass UI.
+- **Shortcuts / Siri** — "Ask Omnie" sends a prompt to whichever mode is
+  active and returns the reply, without opening the app.
+- **`omnie://` URL scheme** — `omnie://ask?text=...` from another app, a
+  Shortcut, or a link, optionally forcing `mode=local` or `mode=remote`.
+- **MCP client** (on-device mode only) — point it at an MCP server in
+  Settings and its tools are added to the on-device agent's tool list,
+  alongside the built-in `currentDateTime` tool.
 
 ## Requirements
 
@@ -47,6 +54,12 @@ No remote repository or hosted CI service is required.
   and `SSEParser`, a lenient Server-Sent Events parser.
 - `OmnieAgent/Local/` — `LocalAgentClient` and `CurrentDateTimeTool`, the
   on-device agent.
+- `OmnieAgent/MCP/` — `MCPClient` (JSON-RPC over the Streamable HTTP
+  transport), `MCPToolDefinition`, and `MCPDynamicTool`, the Foundation
+  Models `Tool` bridge for MCP-discovered tools.
+- `OmnieAgent/AppIntents/` — `AskOmnieIntent` and the bridge it uses to reach
+  whichever agent is configured without the SwiftUI environment.
+- `OmnieAgent/DeepLinking/` — `DeepLink`, the `omnie://` URL parser.
 - `OmnieAgent/AppModel.swift` — the single `@Observable` source of truth for
   both modes.
 - `OmnieAgent/Views/` — SwiftUI views; `WelcomeView` is the mode picker,
@@ -56,19 +69,23 @@ No remote repository or hosted CI service is required.
 ## Integrating with other tools and agents
 
 Omnie Agent speaks the same conventions as the rest of the Omnie/WCKD.ai
-family where they apply:
+family where they apply, and stays focused on Hermes-style agents for the
+remote side rather than special-casing any one backend:
 
 - Remote mode talks to anything exposing Hermes Agent's API server contract
-  (`/health`, `/v1/models`, `/api/sessions*`). An
-  [OMNIE-BOX](https://github.com/wckdboy/omnie) hub or any other
-  Hermes-compatible gateway should work without client changes.
-- No API keys or secrets are ever committed; the server's key lives only in
-  the device Keychain.
+  (`/health`, `/v1/models`, `/api/sessions*`).
+- **Shortcuts, Siri, and the `omnie://` URL scheme** let other apps and
+  automations drive either mode without opening the app.
+- **MCP client support** lets the on-device agent pull in tools from any
+  MCP server over the Streamable HTTP transport — not wired into remote mode,
+  since a Hermes gateway already manages its own tools server-side.
+- No API keys or secrets are ever committed; the server's key and the MCP
+  bearer token both live only in the device Keychain.
 
-Broader interop (Shortcuts/App Intents, a URL scheme, direct OMNIE-BOX hub
-support, MCP) is tracked in `ROADMAP.md` and not yet built — see that file
-before starting work in this area so efforts across the Omnie programs don't
-duplicate or conflict.
+Right now this covers `omnie-edit` and `omnie-agent`; more Omnie programs are
+expected to join this integration surface over time — check `ROADMAP.md`
+before extending it so they don't grow incompatible answers to the same
+question.
 
 ## Contributing
 

@@ -62,6 +62,11 @@ struct SessionsView: View {
             .task {
                 await model.refreshSessions()
             }
+            .onChange(of: model.pendingRemoteSession) { _, newValue in
+                guard let newValue else { return }
+                path.append(newValue)
+                model.pendingRemoteSession = nil
+            }
         }
     }
 

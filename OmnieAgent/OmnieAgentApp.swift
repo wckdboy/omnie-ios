@@ -8,6 +8,9 @@ struct OmnieAgentApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .onOpenURL { url in
+                    model.handleDeepLink(url)
+                }
         }
     }
 }

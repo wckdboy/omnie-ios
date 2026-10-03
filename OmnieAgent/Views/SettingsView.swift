@@ -14,6 +14,11 @@ struct SettingsView: View {
     @State private var showSignOutConfirmation = false
     @State private var showModeChangeConfirmation = false
 
+    @State private var mcpURLText: String = ""
+    @State private var mcpToken: String = ""
+    @State private var isReconnectingMCP = false
+    @State private var mcpStatusMessage: String?
+
     var body: some View {
         NavigationStack {
             Form {
@@ -111,6 +116,7 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
     private var localSection: some View {
         Section("On-Device Agent") {
             Label("Running Apple's on-device model", systemImage: "iphone.gen3")
@@ -124,13 +130,55 @@ struct SettingsView: View {
             }
             .disabled(model.localMessages.isEmpty)
         }
+
+        Section {
+            TextField("MCP Server URL", text: $mcpURLText)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            SecureField("Bearer Token (optional)", text: $mcpToken)
+
+            Button {
+                Task { await reconnectMCP() }
+            } label: {
+                HStack {
+                    Text("Save & Reconnect")
+                    if isReconnectingMCP {
+                        Spacer()
+                        ProgressView().controlSize(.small)
+                    }
+                }
+            }
+            .disabled(mcpURLText.isEmpty || isReconnectingMCP)
+
+            if !mcpURLText.isEmpty {
+                Button("Remove MCP Server", role: .destructive) {
+                    removeMCP()
+                }
+            }
+
+            if let mcpStatusMessage {
+                Text(mcpStatusMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("MCP Tools")
+        } footer: {
+            Text("Gives the on-device agent extra tools from an MCP server, on top of its built-in ones. Hermes-style remote mode manages its own tools and isn't affected by this.")
+        }
     }
 
     private func load() {
-        guard let config = model.config else { return }
-        urlText = config.baseURL.absoluteString
-        apiKey = config.apiKey
-        displayName = config.displayName
+        if let config = model.config {
+            urlText = config.baseURL.absoluteString
+            apiKey = config.apiKey
+            displayName = config.displayName
+        }
+        if let mcpConfig = MCPServerConfigStore.shared.current {
+            mcpURLText = mcpConfig.endpoint.absoluteString
+            mcpToken = mcpConfig.bearerToken
+        }
     }
 
     private func testConnection() async {
@@ -154,6 +202,34 @@ struct SettingsView: View {
         let name = displayName.isEmpty ? (url.host ?? "Hermes Agent") : displayName
         model.apply(ServerConfig(baseURL: url, apiKey: apiKey, displayName: name))
         dismiss()
+    }
+
+    private func reconnectMCP() async {
+        guard let url = URL(string: mcpURLText) else {
+            mcpStatusMessage = "That doesn't look like a valid URL."
+            return
+        }
+        isReconnectingMCP = true
+        defer { isReconnectingMCP = false }
+        MCPServerConfigStore.shared.save(MCPServerConfig(endpoint: url, bearerToken: mcpToken))
+        let mcpClient = MCPClient(endpoint: url, bearerToken: mcpToken)
+        do {
+            let tools = try await mcpClient.listTools()
+            mcpStatusMessage = tools.isEmpty
+                ? "Connected — the server reported no tools."
+                : "Connected — \(tools.count) tool\(tools.count == 1 ? "" : "s"): \(tools.map(\.name).joined(separator: ", "))."
+            await model.reloadLocalTools()
+        } catch {
+            mcpStatusMessage = error.localizedDescription
+        }
+    }
+
+    private func removeMCP() {
+        MCPServerConfigStore.shared.clear()
+        mcpURLText = ""
+        mcpToken = ""
+        mcpStatusMessage = nil
+        Task { await model.reloadLocalTools() }
     }
 }
 
