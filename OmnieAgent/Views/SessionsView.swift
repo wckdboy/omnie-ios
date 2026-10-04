@@ -32,7 +32,7 @@ struct SessionsView: View {
                     )
                 }
             }
-            .navigationTitle(model.config?.displayName ?? "Omnie Agent")
+            .navigationTitle(model.providerConfig?.displayName ?? "Omnie Agent")
             .navigationDestination(for: ChatSession.self) { session in
                 ChatView(session: session)
             }

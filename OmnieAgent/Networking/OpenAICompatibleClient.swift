@@ -6,10 +6,10 @@ import Foundation
 /// all of them rather than bespoke code per provider. Each request sends
 /// the full message history, since these endpoints are stateless per call.
 actor OpenAICompatibleClient {
-    let config: CloudProviderConfig
+    let config: ProviderConfig
     private let session: URLSession
 
-    init(config: CloudProviderConfig) {
+    init(config: ProviderConfig) {
         self.config = config
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30

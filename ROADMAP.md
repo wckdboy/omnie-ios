@@ -9,7 +9,8 @@
 | M5 | Shortcuts/Siri (`AskOmnieIntent`), `omnie://` URL scheme, MCP client for on-device tools | ✅ |
 | M6 | `BRANDING.md` adopted: design tokens, Unbounded display font, accent gradient on primary actions, selectable monochrome theme | ✅ |
 | M7 | OpenCode as a second remote backend; Cloud mode (BYOK) with a provider catalog | ✅ |
-| M8 | Further cross-program integration (see below) | open |
+| M8 | Unified Provider system: one picker/setup screen/Settings section for Hermes, OpenCode, and every cloud preset; `AppMode` collapsed from three cases to two | ✅ |
+| M9 | Further cross-program integration (see below) | open |
 
 ## M7 notes — OpenCode and BYOK
 
@@ -33,17 +34,35 @@
   `/chat/completions` contract `OpenAICompatibleClient` speaks. Use "Custom"
   if an OpenAI-compatible shim is available.
 
-## M8 — further cross-program integration
+## M8 notes — the unified Provider system
+
+- `AppMode` is now just `local` / `provider` (was `local` / `remote` /
+  `cloud`). `ProviderConfig` replaced the separate `ServerConfig` and
+  `CloudProviderConfig`; `ProviderTransport` (`hermes` / `opencode` /
+  `openAICompatible`) decides which fields the setup screen shows and
+  which chat UI (`SessionsView`+`ChatView` vs. `ProviderChatView`) the root
+  view routes to.
+- OpenCode no longer exposes a separate Username field — the UI shows one
+  "API Key" field like every other provider; it's mapped internally to
+  HTTP Basic auth with the fixed default username (`opencode`).
+- Only one provider connection can be configured at a time (switching
+  providers means re-entering details). Multiple saved connections you can
+  switch between without re-entering anything — closer to Hermes Desktop's
+  own "Settings → Connections" list — is a natural next step, not yet built.
+
+## M9 — further cross-program integration
 
 Scope right now is `omnie-edit` and `omnie-agent`; more Omnie programs are
 expected to join over time. Candidate next steps, in no particular order —
 check in before starting one, since this is shared surface across programs:
 
-- **OMNIE-BOX hub as a third remote backend.** The [omnie](https://github.com/wckdboy/omnie)
+- **Multiple saved provider connections**, selectable without re-entering
+  credentials (see M8 notes above).
+- **OMNIE-BOX hub as a fourth provider.** The [omnie](https://github.com/wckdboy/omnie)
   hub exposes its own `/api/chat` (SSE) and `/api/about`. `RemoteAgentClient`
-  already supports multiple backends (Hermes, OpenCode) — adding this one
-  would follow the same pattern.
-- **MCP for remote mode.** Not done: a Hermes/OpenCode server manages its
+  already supports multiple session-based backends (Hermes, OpenCode) —
+  adding this one would follow the same pattern.
+- **MCP for provider mode.** Not done: a Hermes/OpenCode server manages its
   own tools server-side, so the client has no tool list to extend there
   today. If that changes, MCP wiring should follow the same
   `MCPDynamicTool` pattern used on-device.

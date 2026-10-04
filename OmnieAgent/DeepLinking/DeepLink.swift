@@ -5,8 +5,8 @@ import Foundation
 ///
 /// `omnie://ask?text=What's%20the%20weather&mode=local` sends `text` to
 /// the on-device agent, switching into local mode first if needed. Omit
-/// `mode` to use whichever mode is currently active; `mode=remote` needs a
-/// server already configured (it won't trigger onboarding).
+/// `mode` to use whichever mode is currently active; `mode=provider` needs
+/// a provider already configured (it won't trigger setup).
 enum DeepLink {
     case ask(text: String, mode: AppMode?)
 

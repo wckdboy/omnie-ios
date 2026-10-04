@@ -1,0 +1,9 @@
+{
+  "id" : "95daa059-1ee0-43d3-a8db-0177beb77fab",
+  "targets" : [
+    {
+      "id" : "6a83ddff-ce4e-401e-8d14-315f32cb2bd9",
+      "name" : "Omnie-Agent"
+    }
+  ]
+}

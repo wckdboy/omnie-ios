@@ -1,27 +1,20 @@
 import SwiftUI
 
-/// Settings for whichever mode is active: edit/test the remote server, the
-/// cloud provider, or manage the on-device agent. Either way, lets you
-/// switch modes entirely.
+/// Settings for whichever mode is active: edit/test the configured
+/// provider, or manage the on-device agent. Either way, lets you switch
+/// modes entirely.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(BrandTheme.self) private var theme
     @Environment(\.dismiss) private var dismiss
 
-    // Remote (Hermes / OpenCode)
-    @State private var kind: RemoteBackendKind = .hermes
-    @State private var urlText: String = ""
-    @State private var username: String = ""
+    // Provider
+    @State private var baseURLText: String = ""
     @State private var apiKey: String = ""
+    @State private var modelText: String = ""
     @State private var displayName: String = ""
     @State private var isTesting = false
     @State private var testMessage: String?
-
-    // Cloud (BYOK)
-    @State private var cloudModel: String = ""
-    @State private var cloudAPIKey: String = ""
-    @State private var isTestingCloud = false
-    @State private var cloudTestMessage: String?
 
     @State private var showSignOutConfirmation = false
     @State private var showModeChangeConfirmation = false
@@ -31,19 +24,20 @@ struct SettingsView: View {
     @State private var isReconnectingMCP = false
     @State private var mcpStatusMessage: String?
 
-    private var canSaveRemote: Bool { !urlText.isEmpty && !apiKey.isEmpty }
-    private var canSaveCloud: Bool { !cloudModel.isEmpty && !cloudAPIKey.isEmpty }
+    private var needsModelField: Bool { model.providerConfig?.transport == .openAICompatible }
+    private var canSave: Bool {
+        guard URL(string: baseURLText) != nil, !apiKey.isEmpty else { return false }
+        return !needsModelField || !modelText.isEmpty
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 switch model.mode {
-                case .remote:
-                    remoteSections
+                case .provider:
+                    providerSections
                 case .local:
                     localSection
-                case .cloud:
-                    cloudSections
                 case nil:
                     EmptyView()
                 }
@@ -82,24 +76,15 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                switch model.mode {
-                case .remote:
+                if model.mode == .provider {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Cancel") { dismiss() }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Save") { saveRemote() }
-                            .disabled(!canSaveRemote)
+                        Button("Save") { save() }
+                            .disabled(!canSave)
                     }
-                case .cloud:
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel") { dismiss() }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Save") { saveCloud() }
-                            .disabled(!canSaveCloud)
-                    }
-                default:
+                } else {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { dismiss() }
                     }
@@ -107,11 +92,7 @@ struct SettingsView: View {
             }
             .confirmationDialog("Sign out?", isPresented: $showSignOutConfirmation, titleVisibility: .visible) {
                 Button("Sign Out", role: .destructive) {
-                    if model.mode == .cloud {
-                        model.signOutCloud()
-                    } else {
-                        model.signOut()
-                    }
+                    model.signOutProvider()
                     dismiss()
                 }
             }
@@ -121,33 +102,31 @@ struct SettingsView: View {
                     dismiss()
                 }
             } message: {
-                Text("You can switch back later without losing your server details or on-device conversation.")
+                Text("You can switch back later without losing your provider details or on-device conversation.")
             }
             .onAppear(perform: load)
         }
     }
 
     @ViewBuilder
-    private var remoteSections: some View {
-        Section("Server") {
-            Picker("Backend", selection: $kind) {
-                Text("Hermes Agent").tag(RemoteBackendKind.hermes)
-                Text("OpenCode").tag(RemoteBackendKind.opencode)
+    private var providerSections: some View {
+        Section {
+            if let config = model.providerConfig {
+                LabeledContent("Provider", value: config.providerName)
             }
-            .pickerStyle(.segmented)
-            TextField("URL", text: $urlText)
+            TextField(model.providerConfig?.transport.isSessionBased == true ? "Server URL" : "Base URL", text: $baseURLText)
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            if kind == .opencode {
-                TextField("Username", text: $username)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                SecureField("Password", text: $apiKey)
-            } else {
-                SecureField("API Key", text: $apiKey)
+            if needsModelField {
+                TextField("Model", text: $modelText)
             }
+            SecureField("API Key", text: $apiKey)
             TextField("Name", text: $displayName)
+        } header: {
+            Text("Provider")
+        } footer: {
+            Text("To switch providers entirely, sign out and reconnect from the welcome screen.")
         }
 
         Section {
@@ -170,51 +149,12 @@ struct SettingsView: View {
         }
 
         Section {
-            Button("Sign Out", role: .destructive) {
-                showSignOutConfirmation = true
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var cloudSections: some View {
-        Section {
-            if let config = model.cloudConfig {
-                LabeledContent("Provider", value: config.providerName)
-                LabeledContent("Base URL", value: config.baseURL.absoluteString)
-            }
-            TextField("Model", text: $cloudModel)
-            SecureField("API Key", text: $cloudAPIKey)
-        } header: {
-            Text("Provider")
-        } footer: {
-            Text("To switch providers entirely, sign out and reconnect from the welcome screen.")
-        }
-
-        Section {
-            Button {
-                Task { await testCloudConnection() }
-            } label: {
-                HStack {
-                    Text("Test Connection")
-                    if isTestingCloud {
-                        Spacer()
-                        ProgressView().controlSize(.small)
-                    }
+            if model.providerConfig?.transport.isSessionBased == false {
+                Button("Clear Conversation", role: .destructive) {
+                    model.clearProviderConversation()
                 }
+                .disabled(model.providerMessages.isEmpty)
             }
-            if let cloudTestMessage {
-                Text(cloudTestMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-
-        Section {
-            Button("Clear Conversation", role: .destructive) {
-                model.clearCloudConversation()
-            }
-            .disabled(model.cloudMessages.isEmpty)
             Button("Sign Out", role: .destructive) {
                 showSignOutConfirmation = true
             }
@@ -270,21 +210,16 @@ struct SettingsView: View {
         } header: {
             Text("MCP Tools")
         } footer: {
-            Text("Gives the on-device agent extra tools from an MCP server, on top of its built-in ones. Hermes-style remote mode manages its own tools and isn't affected by this.")
+            Text("Gives the on-device agent extra tools from an MCP server, on top of its built-in ones. Provider mode manages its own tools and isn't affected by this.")
         }
     }
 
     private func load() {
-        if let config = model.config {
-            kind = config.kind
-            urlText = config.baseURL.absoluteString
-            username = config.username
+        if let config = model.providerConfig {
+            baseURLText = config.baseURL.absoluteString
             apiKey = config.apiKey
+            modelText = config.model
             displayName = config.displayName
-        }
-        if let cloudConfig = model.cloudConfig {
-            cloudModel = cloudConfig.model
-            cloudAPIKey = cloudConfig.apiKey
         }
         if let mcpConfig = MCPServerConfigStore.shared.current {
             mcpURLText = mcpConfig.endpoint.absoluteString
@@ -293,14 +228,22 @@ struct SettingsView: View {
     }
 
     private func testConnection() async {
-        guard let url = URL(string: urlText) else {
+        guard let existing = model.providerConfig, let url = URL(string: baseURLText) else {
             testMessage = "That doesn't look like a valid URL."
             return
         }
         isTesting = true
         defer { isTesting = false }
-        let config = ServerConfig(kind: kind, baseURL: url, username: username, apiKey: apiKey, displayName: displayName)
-        switch await model.testConnection(config) {
+        let config = ProviderConfig(
+            presetID: existing.presetID,
+            providerName: existing.providerName,
+            transport: existing.transport,
+            baseURL: url,
+            apiKey: apiKey,
+            model: modelText,
+            displayName: displayName
+        )
+        switch await model.testProviderConnection(config) {
         case .success(let name):
             testMessage = name.map { "Connected · \($0)" } ?? "Connected"
         case .failure(let error):
@@ -308,31 +251,19 @@ struct SettingsView: View {
         }
     }
 
-    private func saveRemote() {
-        guard let url = URL(string: urlText) else { return }
-        let fallbackName = kind == .hermes ? "Hermes Agent" : "OpenCode"
-        let name = displayName.isEmpty ? (url.host ?? fallbackName) : displayName
-        model.apply(ServerConfig(kind: kind, baseURL: url, username: username, apiKey: apiKey, displayName: name))
-        dismiss()
-    }
-
-    private func testCloudConnection() async {
-        guard let existing = model.cloudConfig else { return }
-        isTestingCloud = true
-        defer { isTestingCloud = false }
-        let config = CloudProviderConfig(providerID: existing.providerID, providerName: existing.providerName, baseURL: existing.baseURL, model: cloudModel, apiKey: cloudAPIKey)
-        switch await model.testCloudConnection(config) {
-        case .success:
-            cloudTestMessage = "Connected"
-        case .failure(let error):
-            cloudTestMessage = error.localizedDescription
-        }
-    }
-
-    private func saveCloud() {
-        guard let existing = model.cloudConfig else { return }
-        let config = CloudProviderConfig(providerID: existing.providerID, providerName: existing.providerName, baseURL: existing.baseURL, model: cloudModel, apiKey: cloudAPIKey)
-        model.applyCloud(config)
+    private func save() {
+        guard let existing = model.providerConfig, let url = URL(string: baseURLText) else { return }
+        let name = displayName.isEmpty ? existing.providerName : displayName
+        let config = ProviderConfig(
+            presetID: existing.presetID,
+            providerName: existing.providerName,
+            transport: existing.transport,
+            baseURL: url,
+            apiKey: apiKey,
+            model: modelText,
+            displayName: name
+        )
+        model.applyProvider(config)
         dismiss()
     }
 

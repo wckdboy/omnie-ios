@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// Chooses between the mode picker (no mode chosen yet), the on-device
-/// agent, or the remote sessions list, based on `AppModel.mode`.
+/// agent, or a configured provider's chat UI — session-based providers
+/// (Hermes, OpenCode) get the sessions list, OpenAI-compatible ones get a
+/// single thread — based on `AppModel.mode` and `providerConfig.transport`.
 struct RootView: View {
     @Environment(AppModel.self) private var model
 
@@ -9,17 +11,15 @@ struct RootView: View {
         switch model.mode {
         case .local:
             LocalChatView()
-        case .remote:
-            if model.isConfigured {
-                SessionsView()
+        case .provider:
+            if let config = model.providerConfig {
+                if config.transport.isSessionBased {
+                    SessionsView()
+                } else {
+                    ProviderChatView()
+                }
             } else {
-                OnboardingView()
-            }
-        case .cloud:
-            if model.cloudConfig != nil {
-                CloudChatView()
-            } else {
-                CloudProviderSetupView()
+                ProviderSetupView()
             }
         case nil:
             WelcomeView()

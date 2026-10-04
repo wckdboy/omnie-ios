@@ -21,10 +21,10 @@ nonisolated enum HermesError: LocalizedError {
 /// `/v1` routes for a quick health/name check, and the `/api/sessions` REST +
 /// SSE routes that drive the chat UI.
 actor HermesClient: RemoteAgentClient {
-    private let config: ServerConfig
+    private let config: ProviderConfig
     private let session: URLSession
 
-    init(config: ServerConfig) {
+    init(config: ProviderConfig) {
         self.config = config
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30

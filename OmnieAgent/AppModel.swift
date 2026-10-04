@@ -1,21 +1,22 @@
 import Foundation
 import Observation
 
-/// Top-level app state: which mode is active (on-device vs remote), the
-/// configured server, the session list, the active conversation, and the
-/// in-flight streaming turn. Injected into the environment once by
-/// `OmnieAgentApp`.
+/// Top-level app state: which mode is active (on-device vs. a configured
+/// provider), the provider's config, the session list (for session-based
+/// providers), the active conversation, and the in-flight streaming turn.
+/// Injected into the environment once by `OmnieAgentApp`.
 @MainActor
 @Observable
 final class AppModel {
-    private(set) var config: ServerConfig?
+    private(set) var providerConfig: ProviderConfig?
     private(set) var client: (any RemoteAgentClient)?
+    private(set) var cloudClient: OpenAICompatibleClient?
     private(set) var mode: AppMode?
 
+    // Session-based provider chat (Hermes, OpenCode)
     var sessions: [ChatSession] = []
     var messages: [ChatMessage] = []
     var activeSessionId: String?
-
     var isLoadingSessions = false
     var isStreaming = false
     var errorMessage: String?
@@ -26,46 +27,48 @@ final class AppModel {
     private(set) var localAvailability: LocalAgentClient.Availability = .unavailable(reason: "Checking…")
     private var localClient: LocalAgentClient?
 
-    // Cloud provider (BYOK)
-    private(set) var cloudConfig: CloudProviderConfig?
-    var cloudMessages: [ChatMessage] = []
-    var isCloudStreaming = false
-    private var cloudClient: OpenAICompatibleClient?
+    // Single-thread provider chat (OpenAI-compatible: DeepSeek, OpenAI, etc.)
+    var providerMessages: [ChatMessage] = []
+    var isProviderStreaming = false
 
-    // Pending navigation target for a deep link that opened a new remote
-    // chat; SessionsView observes this to push into the conversation.
+    // Pending navigation target for a deep link that opened a new session;
+    // SessionsView observes this to push into the conversation.
     var pendingRemoteSession: ChatSession?
 
     private var streamTask: Task<Void, Never>?
     private var localStreamTask: Task<Void, Never>?
-    private var cloudStreamTask: Task<Void, Never>?
+    private var providerStreamTask: Task<Void, Never>?
     private let localTranscriptKey = "omnie.local.transcript"
-    private let cloudTranscriptKey = "omnie.cloud.transcript"
+    private let providerTranscriptKey = "omnie.provider.transcript"
 
     init() {
-        config = ServerConfigStore.shared.current
-        if let config {
-            client = config.makeClient()
-        }
-        cloudConfig = CloudProviderConfigStore.shared.current
-        if let cloudConfig {
-            cloudClient = OpenAICompatibleClient(config: cloudConfig)
+        providerConfig = ProviderConfigStore.shared.current
+        if let providerConfig {
+            setUpClients(for: providerConfig)
         }
         localAvailability = LocalAgentClient.availability
         mode = AppModeStore.shared.current
         if mode == .local {
             loadLocalTranscript()
             Task { localClient = await LocalAgentClient.makeConfigured() }
-        } else if mode == .cloud {
-            loadCloudTranscript()
+        } else if mode == .provider, providerConfig?.transport == .openAICompatible {
+            loadProviderTranscript()
         }
     }
-
-    var isConfigured: Bool { config != nil }
 
     var localAvailabilityMessage: String? {
         if case .unavailable(let reason) = localAvailability { return reason }
         return nil
+    }
+
+    private func setUpClients(for config: ProviderConfig) {
+        if config.transport.isSessionBased {
+            client = config.makeRemoteClient()
+            cloudClient = nil
+        } else {
+            cloudClient = OpenAICompatibleClient(config: config)
+            client = nil
+        }
     }
 
     // MARK: - Mode
@@ -83,8 +86,9 @@ final class AppModel {
         return true
     }
 
-    /// Returns to the mode picker. Remote config and the local transcript are
-    /// left untouched, so switching back later picks up where it left off.
+    /// Returns to the mode picker. The provider config and both
+    /// transcripts are left untouched, so switching back later picks up
+    /// where it left off.
     func changeMode() {
         mode = nil
         AppModeStore.shared.save(nil)
@@ -98,74 +102,60 @@ final class AppModel {
         localClient = await LocalAgentClient.makeConfigured()
     }
 
-    // MARK: - Configuration (remote)
+    // MARK: - Configuration (provider)
 
-    func testConnection(_ config: ServerConfig) async -> Result<String?, Error> {
-        let testClient = config.makeClient()
-        do {
-            guard try await testClient.health() else {
-                return .failure(HermesError.server(status: -1, message: "The server didn't report a healthy status."))
+    func testProviderConnection(_ config: ProviderConfig) async -> Result<String?, Error> {
+        if config.transport.isSessionBased {
+            guard let testClient = config.makeRemoteClient() else { return .failure(HermesError.decoding) }
+            do {
+                guard try await testClient.health() else {
+                    return .failure(HermesError.server(status: -1, message: "The server didn't report a healthy status."))
+                }
+                let name = try? await testClient.modelName()
+                return .success(name)
+            } catch {
+                return .failure(error)
             }
-            let name = try? await testClient.modelName()
-            return .success(name)
-        } catch {
-            return .failure(error)
+        } else {
+            let testClient = OpenAICompatibleClient(config: config)
+            do {
+                try await testClient.testConnection()
+                return .success(nil)
+            } catch {
+                return .failure(error)
+            }
         }
     }
 
-    func apply(_ config: ServerConfig) {
-        ServerConfigStore.shared.save(config)
-        self.config = config
-        client = config.makeClient()
+    func applyProvider(_ config: ProviderConfig) {
+        ProviderConfigStore.shared.save(config)
+        providerConfig = config
+        setUpClients(for: config)
         sessions = []
         messages = []
         activeSessionId = nil
-        mode = .remote
-        AppModeStore.shared.save(.remote)
+        providerMessages = []
+        if config.transport == .openAICompatible {
+            loadProviderTranscript()
+        }
+        mode = .provider
+        AppModeStore.shared.save(.provider)
     }
 
-    func signOut() {
-        ServerConfigStore.shared.clear()
-        config = nil
+    func signOutProvider() {
+        ProviderConfigStore.shared.clear()
+        providerConfig = nil
         client = nil
+        cloudClient = nil
         sessions = []
         messages = []
         activeSessionId = nil
+        providerMessages = []
         mode = nil
         AppModeStore.shared.save(nil)
     }
 
-    // MARK: - Configuration (cloud / BYOK)
-
-    func testCloudConnection(_ config: CloudProviderConfig) async -> Result<Void, Error> {
-        let testClient = OpenAICompatibleClient(config: config)
-        do {
-            try await testClient.testConnection()
-            return .success(())
-        } catch {
-            return .failure(error)
-        }
-    }
-
-    func applyCloud(_ config: CloudProviderConfig) {
-        CloudProviderConfigStore.shared.save(config)
-        cloudConfig = config
-        cloudClient = OpenAICompatibleClient(config: config)
-        cloudMessages = []
-        mode = .cloud
-        AppModeStore.shared.save(.cloud)
-    }
-
-    func signOutCloud() {
-        CloudProviderConfigStore.shared.clear()
-        cloudConfig = nil
-        cloudClient = nil
-        cloudMessages = []
-        mode = nil
-        AppModeStore.shared.save(nil)
-    }
-
-    // MARK: - Sessions (remote)
+    // MARK: - Sessions (session-based providers)
 
     func refreshSessions() async {
         guard let client else { return }
@@ -205,7 +195,7 @@ final class AppModel {
         }
     }
 
-    // MARK: - Chat (remote)
+    // MARK: - Chat (session-based providers)
 
     func openSession(_ session: ChatSession) async {
         activeSessionId = session.id
@@ -335,61 +325,61 @@ final class AppModel {
         UserDefaults.standard.set(data, forKey: localTranscriptKey)
     }
 
-    // MARK: - Chat (cloud / BYOK)
+    // MARK: - Chat (single-thread / OpenAI-compatible providers)
 
-    func sendCloud(_ text: String) {
+    func sendProvider(_ text: String) {
         guard let cloudClient, !text.isEmpty else { return }
 
-        cloudMessages.append(ChatMessage(role: .user, text: text))
+        providerMessages.append(ChatMessage(role: .user, text: text))
         let assistantMessage = ChatMessage(role: .assistant, text: "", isStreaming: true)
-        cloudMessages.append(assistantMessage)
-        isCloudStreaming = true
+        providerMessages.append(assistantMessage)
+        isProviderStreaming = true
 
         // Stateless API: send the whole history so far, including the new
         // user message that was just appended above.
-        let history = cloudMessages.filter { $0.id != assistantMessage.id }
+        let history = providerMessages.filter { $0.id != assistantMessage.id }
 
-        cloudStreamTask = Task {
+        providerStreamTask = Task {
             do {
                 for try await event in cloudClient.streamChat(messages: history) {
-                    self.applyCloud(event, to: assistantMessage.id)
+                    self.applyProviderEvent(event, to: assistantMessage.id)
                 }
             } catch {
                 if !Task.isCancelled {
                     self.errorMessage = error.localizedDescription
                 }
             }
-            if let index = self.cloudMessages.firstIndex(where: { $0.id == assistantMessage.id }) {
-                self.cloudMessages[index].isStreaming = false
+            if let index = self.providerMessages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                self.providerMessages[index].isStreaming = false
             }
-            self.isCloudStreaming = false
-            self.saveCloudTranscript()
+            self.isProviderStreaming = false
+            self.saveProviderTranscript()
         }
     }
 
-    func stopCloudStreaming() {
-        cloudStreamTask?.cancel()
-        cloudStreamTask = nil
-        isCloudStreaming = false
-        if let last = cloudMessages.indices.last {
-            cloudMessages[last].isStreaming = false
+    func stopProviderStreaming() {
+        providerStreamTask?.cancel()
+        providerStreamTask = nil
+        isProviderStreaming = false
+        if let last = providerMessages.indices.last {
+            providerMessages[last].isStreaming = false
         }
-        saveCloudTranscript()
+        saveProviderTranscript()
     }
 
-    func clearCloudConversation() {
-        cloudStreamTask?.cancel()
-        cloudStreamTask = nil
-        cloudMessages = []
-        isCloudStreaming = false
-        UserDefaults.standard.removeObject(forKey: cloudTranscriptKey)
+    func clearProviderConversation() {
+        providerStreamTask?.cancel()
+        providerStreamTask = nil
+        providerMessages = []
+        isProviderStreaming = false
+        UserDefaults.standard.removeObject(forKey: providerTranscriptKey)
     }
 
-    private func applyCloud(_ event: StreamEvent, to messageId: UUID) {
-        guard let index = cloudMessages.firstIndex(where: { $0.id == messageId }) else { return }
+    private func applyProviderEvent(_ event: StreamEvent, to messageId: UUID) {
+        guard let index = providerMessages.firstIndex(where: { $0.id == messageId }) else { return }
         switch event {
         case .delta(let chunk), .commentary(let chunk):
-            cloudMessages[index].text += chunk
+            providerMessages[index].text += chunk
         case .failed(let message):
             errorMessage = message
         case .toolStarted, .toolCompleted, .completed, .cancelled, .unknown:
@@ -397,15 +387,15 @@ final class AppModel {
         }
     }
 
-    private func loadCloudTranscript() {
-        guard let data = UserDefaults.standard.data(forKey: cloudTranscriptKey),
+    private func loadProviderTranscript() {
+        guard let data = UserDefaults.standard.data(forKey: providerTranscriptKey),
               let saved = try? JSONDecoder().decode([ChatMessage].self, from: data) else { return }
-        cloudMessages = saved
+        providerMessages = saved
     }
 
-    private func saveCloudTranscript() {
-        guard let data = try? JSONEncoder().encode(cloudMessages) else { return }
-        UserDefaults.standard.set(data, forKey: cloudTranscriptKey)
+    private func saveProviderTranscript() {
+        guard let data = try? JSONEncoder().encode(providerMessages) else { return }
+        UserDefaults.standard.set(data, forKey: providerTranscriptKey)
     }
 
     // MARK: - Deep links
@@ -424,25 +414,24 @@ final class AppModel {
                     }
                     sendLocal(text)
                 }
-            case .remote:
-                guard client != nil else { return }
-                if mode != .remote {
-                    mode = .remote
-                    AppModeStore.shared.save(.remote)
+            case .provider:
+                guard let providerConfig else { return }
+                if mode != .provider {
+                    mode = .provider
+                    AppModeStore.shared.save(.provider)
                 }
-                Task {
-                    guard let session = await createSession() else { return }
-                    pendingRemoteSession = session
-                    await openSession(session)
-                    send(text)
+                if providerConfig.transport.isSessionBased {
+                    guard client != nil else { return }
+                    Task {
+                        guard let session = await createSession() else { return }
+                        pendingRemoteSession = session
+                        await openSession(session)
+                        send(text)
+                    }
+                } else {
+                    guard cloudClient != nil else { return }
+                    sendProvider(text)
                 }
-            case .cloud:
-                guard cloudClient != nil else { return }
-                if mode != .cloud {
-                    mode = .cloud
-                    AppModeStore.shared.save(.cloud)
-                }
-                sendCloud(text)
             case nil:
                 break
             }

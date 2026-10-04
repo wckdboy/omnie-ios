@@ -13,10 +13,10 @@ import Foundation
 /// just yields a single `.delta` with the full text. Revisit if/when the
 /// `/event` payload shapes are confirmed against a live server.
 actor OpenCodeClient: RemoteAgentClient {
-    private let config: ServerConfig
+    private let config: ProviderConfig
     private let session: URLSession
 
-    init(config: ServerConfig) {
+    init(config: ProviderConfig) {
         self.config = config
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30

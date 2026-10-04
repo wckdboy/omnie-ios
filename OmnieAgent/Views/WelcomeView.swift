@@ -1,14 +1,13 @@
 import SwiftUI
 
 /// The first screen: choose between running the agent entirely on this
-/// iPhone (Apple's on-device model) or connecting to a self-hosted Hermes
-/// Agent gateway over Tailscale, a local network, or a public VPS.
+/// iPhone (Apple's on-device model) or connecting to a provider — a
+/// self-hosted Hermes-style agent server, or your own cloud provider key.
 struct WelcomeView: View {
     @Environment(AppModel.self) private var model
     @Environment(BrandTheme.self) private var theme
     @Environment(\.colorScheme) private var colorScheme
-    @State private var showRemoteSetup = false
-    @State private var showCloudSetup = false
+    @State private var showProviderSetup = false
     @State private var localUnavailableMessage: String?
 
     private var tokens: BrandPalette.Tokens { theme.appearance.tokens(for: colorScheme) }
@@ -21,7 +20,7 @@ struct WelcomeView: View {
                         Text("Omnie Agent")
                             .font(.brandDisplay(34))
                             .foregroundStyle(tokens.text)
-                        Text("Run an agent entirely on this iPhone, connect to a Hermes-style agent server, or bring your own cloud provider key.")
+                        Text("Run an agent entirely on this iPhone, or connect to a provider — Hermes Agent, OpenCode, or your own cloud API key.")
                             .foregroundStyle(tokens.secondary)
                     }
                     .padding(.top, 40)
@@ -46,23 +45,12 @@ struct WelcomeView: View {
                         }
 
                         Button {
-                            showRemoteSetup = true
+                            showProviderSetup = true
                         } label: {
                             optionRow(
                                 icon: "server.rack",
-                                title: "Connect to a Server",
-                                subtitle: "Hermes Agent or OpenCode, over Tailscale, your local network, or a public VPS."
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            showCloudSetup = true
-                        } label: {
-                            optionRow(
-                                icon: "key.fill",
-                                title: "Use a Cloud Provider",
-                                subtitle: "Bring your own key — DeepSeek, OpenAI, OpenRouter, and most others."
+                                title: "Connect to a Provider",
+                                subtitle: "Hermes Agent, OpenCode, DeepSeek, OpenAI, and more — bring your own server or key."
                             )
                         }
                         .buttonStyle(.plain)
@@ -71,11 +59,8 @@ struct WelcomeView: View {
                 .padding(24)
             }
             .background(tokens.background)
-            .navigationDestination(isPresented: $showRemoteSetup) {
-                OnboardingView()
-            }
-            .navigationDestination(isPresented: $showCloudSetup) {
-                CloudProviderSetupView()
+            .navigationDestination(isPresented: $showProviderSetup) {
+                ProviderSetupView()
             }
         }
     }

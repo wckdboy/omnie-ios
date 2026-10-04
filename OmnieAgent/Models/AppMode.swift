@@ -1,12 +1,11 @@
 import Foundation
 
 /// Which backend is powering the current conversation: Apple's on-device
-/// model, a remote Hermes-style agent gateway (Hermes Agent or OpenCode),
-/// or a directly-configured cloud provider (BYOK).
+/// model, or a configured provider (a Hermes-style agent server, or a
+/// direct BYOK cloud provider — see `ProviderTransport` for which).
 enum AppMode: String, Codable {
     case local
-    case remote
-    case cloud
+    case provider
 }
 
 /// Persists the chosen mode across launches in `UserDefaults`.

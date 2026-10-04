@@ -22,15 +22,19 @@ protocol RemoteAgentClient: Actor {
     nonisolated func streamChat(sessionId: String, text: String) -> AsyncThrowingStream<StreamEvent, Error>
 }
 
-extension ServerConfig {
-    /// Builds the right client type for this config's `kind` — the one
-    /// place that needs to know both backends exist.
-    func makeClient() -> any RemoteAgentClient {
-        switch kind {
+extension ProviderConfig {
+    /// Builds the right client type for this config's `transport` — the one
+    /// place that needs to know every session-based backend that exists.
+    /// Returns `nil` for `.openAICompatible`, which isn't session-based;
+    /// use `OpenAICompatibleClient` directly for that.
+    func makeRemoteClient() -> (any RemoteAgentClient)? {
+        switch transport {
         case .hermes:
             return HermesClient(config: self)
         case .opencode:
             return OpenCodeClient(config: self)
+        case .openAICompatible:
+            return nil
         }
     }
 }
