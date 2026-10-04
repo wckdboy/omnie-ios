@@ -5,7 +5,7 @@ import FoundationNetworking
 
 /// A text-frame WebSocket. iOS uses `URLSessionWebSocketTask`; the Linux
 /// protocol tests plug in their own implementation.
-protocol TextSocket: AnyObject, Sendable {
+nonisolated protocol TextSocket: AnyObject, Sendable {
     func send(_ text: String) async throws
     func receive() async throws -> String
     func close()

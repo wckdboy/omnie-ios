@@ -60,7 +60,7 @@ nonisolated struct SlashCommand: Sendable, Hashable, Identifiable {
 /// One Hermes surface the app can drive. Three exist: the gateway API
 /// server, the dashboard / `hermes serve` JSON-RPC socket, and any
 /// OpenAI-compatible endpoint.
-protocol AgentBackend: AnyObject, Sendable {
+nonisolated protocol AgentBackend: AnyObject, Sendable {
     func probe() async throws -> BackendInfo
     func sessions() async throws -> [AgentSession]
     func newSession(options: TurnOptions) async throws -> OpenedSession
@@ -84,11 +84,13 @@ protocol AgentBackend: AnyObject, Sendable {
     func commands(session: OpenedSession?) async throws -> [SlashCommand]
     func runCommand(_ command: String, session: OpenedSession) async throws -> String?
     func logs(file: String, lines: Int) async throws -> [String]
+    /// Live events of a turn already running when the session was opened.
+    func follow(_ session: OpenedSession) -> AsyncThrowingStream<AgentEvent, Error>?
     func foreground() async
     func close() async
 }
 
-extension AgentBackend {
+nonisolated extension AgentBackend {
     func rename(sessionID: String, title: String) async throws { throw APIError.unsupported("renaming conversations") }
     func setPinned(sessionID: String, pinned: Bool) async throws { throw APIError.unsupported("pinning") }
     func fork(sessionID: String) async throws -> OpenedSession { throw APIError.unsupported("branching conversations") }
@@ -104,6 +106,7 @@ extension AgentBackend {
     func commands(session: OpenedSession?) async throws -> [SlashCommand] { [] }
     func runCommand(_ command: String, session: OpenedSession) async throws -> String? { throw APIError.unsupported("slash commands") }
     func logs(file: String, lines: Int) async throws -> [String] { throw APIError.unsupported("logs") }
+    func follow(_ session: OpenedSession) -> AsyncThrowingStream<AgentEvent, Error>? { nil }
     func foreground() async {}
     func close() async {}
 }

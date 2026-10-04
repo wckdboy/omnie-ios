@@ -105,7 +105,7 @@ nonisolated enum JSONValue: Codable, Hashable, Sendable {
     }
 }
 
-extension JSONValue: ExpressibleByStringLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral,
+nonisolated extension JSONValue: ExpressibleByStringLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral,
     ExpressibleByDictionaryLiteral, ExpressibleByArrayLiteral, ExpressibleByNilLiteral {
     init(stringLiteral value: String) { self = .string(value) }
     init(booleanLiteral value: Bool) { self = .bool(value) }

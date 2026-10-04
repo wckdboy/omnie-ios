@@ -156,6 +156,28 @@ nonisolated final class DashboardBackend: AgentBackend, @unchecked Sendable {
             return
         }
 
+        await listen(messages, sessionID: sid, continuation: continuation)
+    }
+
+    /// Streams a turn that is already running (started elsewhere, or before
+    /// the app reconnected) until it completes.
+    func follow(_ session: OpenedSession) -> AsyncThrowingStream<AgentEvent, Error>? {
+        guard session.running else { return nil }
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                let messages = await self.client.messages()
+                continuation.yield(.status(kind: "follow", text: "Following a turn in progress"))
+                await self.listen(messages, sessionID: session.id, continuation: continuation)
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func listen(
+        _ messages: AsyncStream<GatewayMessage>,
+        sessionID sid: String,
+        continuation: AsyncThrowingStream<AgentEvent, Error>.Continuation
+    ) async {
         var sawReasoningDelta = false
         for await message in messages {
             if Task.isCancelled { break }
