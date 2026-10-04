@@ -58,16 +58,9 @@ final class Theme {
     }
 }
 
-private struct TokensKey: EnvironmentKey {
-    static let defaultValue = Palette.warmLight
-}
-
 extension EnvironmentValues {
     /// The resolved neutral tokens for the current appearance + color scheme.
-    var tokens: Palette.Tokens {
-        get { self[TokensKey.self] }
-        set { self[TokensKey.self] = newValue }
-    }
+    @Entry var tokens: Palette.Tokens = Palette.warmLight
 }
 
 /// Resolves `tokens` from the theme and the live color scheme, and paints

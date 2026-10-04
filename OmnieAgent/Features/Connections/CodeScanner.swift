@@ -76,11 +76,13 @@ private struct QRScanner: UIViewControllerRepresentable {
             isHighlightingEnabled: true
         )
         controller.delegate = context.coordinator
-        try? controller.startScanning()
         return controller
     }
 
-    func updateUIViewController(_ controller: DataScannerViewController, context: Context) {}
+    func updateUIViewController(_ controller: DataScannerViewController, context: Context) {
+        // Scanning can only start once the controller is on screen.
+        if !controller.isScanning { try? controller.startScanning() }
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(onText: onText) }
 

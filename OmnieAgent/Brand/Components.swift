@@ -2,7 +2,7 @@ import SwiftUI
 
 extension View {
     /// Gradient fill behind clear glass (§4). Exactly one per screen.
-    func primaryAction(in shape: some Shape = .capsule) -> some View {
+    func primaryAction(in shape: some Shape = Capsule()) -> some View {
         self
             .foregroundStyle(.white)
             .background(Palette.accent, in: shape)

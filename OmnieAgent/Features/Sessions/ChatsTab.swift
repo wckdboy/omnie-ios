@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum ChatRoute: Hashable {
     case session(id: String, title: String?)

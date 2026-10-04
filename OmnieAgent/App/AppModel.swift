@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 /// Owns the saved agents and which one is active.
 @Observable

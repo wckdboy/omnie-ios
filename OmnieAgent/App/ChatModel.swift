@@ -43,12 +43,30 @@ final class ChatModel {
 
     func open(_ sessionID: String) async {
         isLoading = true
-        defer { isLoading = false }
         do {
             let opened = try await backend.open(sessionID: sessionID)
             adopt(opened)
+            isLoading = false
+            if let live = backend.follow(opened) { await follow(live) }
         } catch {
+            isLoading = false
             self.error = error.localizedDescription
+        }
+    }
+
+    /// Shows a turn that was already running when the chat opened.
+    private func follow(_ stream: AsyncThrowingStream<AgentEvent, Error>) async {
+        isRunning = true
+        defer {
+            isRunning = false
+            statusLine = nil
+            transcript.closeStreams()
+            revision += 1
+        }
+        do {
+            for try await event in stream { handle(event) }
+        } catch {
+            transcript.apply(.failed(error.localizedDescription))
         }
     }
 
