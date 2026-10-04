@@ -16,12 +16,25 @@
 		</dict>
 	</array>
 	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSBonjourServices</key>
 	<array>
-		<dict>
-			<key>NSAllowsArbitraryLoads</key>
-			<true/>
-		</dict>
+		<string>_hermes._tcp</string>
+		<string>_http._tcp</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Omnie records a voice message only while you hold the microphone button.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Omnie turns your voice message into text on this iPhone before sending it.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Omnie uses the camera to scan a Hermes connection QR code or attach a photo.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Omnie can require Face ID before showing your agents.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Unbounded-Bold.ttf</string>
