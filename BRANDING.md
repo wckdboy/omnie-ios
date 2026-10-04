@@ -98,6 +98,12 @@ No exclamation points. No "seamless," "powerful," "effortless," or other adjecti
 
 (No logo asset exists yet as of this writing — this section is the constraint any future logo design has to satisfy.)
 
+### 6.1 App icon
+
+- Background: **pure white, `#FFFFFF`**. Not the warm off-white used elsewhere in the UI — the icon background is the one place the brand uses true white, so icons sit consistently on the Home Screen regardless of which app they're next to.
+- Mark: pure black, `#000000`, flat, centered, no gradient.
+- Every Omnie app icon uses this same background. If a platform wants a dark/tinted variant (iOS dark/tinted icon appearances), keep the mark pure black or white as appropriate and the base variant's background at pure white — don't introduce a third background color per variant.
+
 ## 7. Known gaps
 
 - omnie-edit's `AccentColor` asset (`#EF7B1B` / `#FA9433`) and the `BrandGradient` orange endpoint (`#FA9429`) are close but not identical — they drifted independently. Worth reconciling to one exact value next time either is touched.
