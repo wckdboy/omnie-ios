@@ -2,7 +2,7 @@ import AppIntents
 import Foundation
 
 /// "Ask Omnie" — opens a new chat with the active agent, pre-sent.
-nonisolated struct AskOmnieIntent: AppIntent {
+struct AskOmnieIntent: AppIntent {
     static let title: LocalizedStringResource = "Ask Omnie"
     static let description = IntentDescription("Start a chat with your active Hermes agent.")
     static let openAppWhenRun = true

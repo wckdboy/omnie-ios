@@ -1,4 +1,5 @@
 import SwiftUI
+import Vision
 import VisionKit
 
 /// Scans an `omnie://connect?...` QR code. Falls back to pasting the link
